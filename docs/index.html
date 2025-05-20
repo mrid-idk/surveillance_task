@@ -210,7 +210,7 @@
       
       try {
         // Load index file based on exchange
-        const indexFileName = exchange === 'nse' ? 'nse_json/index.json' : 'bse_json/index.json';
+        const indexFileName = exchange === 'nse' ? 'nse_json/index.json' : 'bse_json/index_bse.json';
         const response = await fetch(indexFileName);
         
         if (!response.ok) {
