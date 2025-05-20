@@ -43,6 +43,13 @@
   }
   .indicator-value {
     font-size: 0.9rem;
+    margin-bottom: 3px;
+  }
+  .indicator-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    display: inline-block;
+    margin-right: 5px;
   }
   .value-high {
     color: green;
@@ -52,6 +59,23 @@
   }
   .value-low {
     color: red;
+  }
+  .legend {
+    display: flex;
+    gap: 15px;
+    margin-top: 10px;
+    margin-bottom: 20px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    font-size: 0.9rem;
+  }
+  .legend-color {
+    width: 15px;
+    height: 15px;
+    margin-right: 5px;
+    display: inline-block;
   }
     body { padding: 2rem; }
     .form-section { margin-bottom: 1.5rem; }
@@ -145,14 +169,6 @@
     </div>
     <div class="col-md-3">
       <div class="form-section">
-        <label for="histIndicator" class="form-label">Select Indicator</label>
-        <select class="form-select" id="histIndicator">
-          <option value="">-- Select --</option>
-        </select>
-      </div>
-    </div>
-    <div class="col-md-3">
-      <div class="form-section">
         <label for="histExchange" class="form-label">Exchange</label>
         <select class="form-select" id="histExchange">
           <option value="">-- Select --</option>
@@ -162,12 +178,27 @@
       </div>
     </div>
   </div>
+  
+  <div class="form-section">
+    <label class="form-label">Select Indicators for Historical View</label>
+    <div class="indicator-container" id="histIndicatorsContainer">
+      <div class="text-center p-3">Please select an exchange and date first to load indicators</div>
+    </div>
+  </div>
+  
+  <div class="form-section">
+    <label class="form-label">Selected Historical Indicators:</label>
+    <div id="histSummary" class="p-2 bg-light rounded">
+      <em>No indicators selected</em>
+    </div>
+  </div>
+  
   <button id="viewHistorical" class="btn btn-success">View Historical Data</button>
 </div>
 
 <!-- Add calendar view container -->
 <div id="calendarView" class="mt-4"></div>
-  </div>
+
 
   <script>
     // Global state
@@ -192,14 +223,15 @@
     const outputDiv = document.getElementById('output');
     const form = document.getElementById('stockForm');
     // Add these to your existing DOM elements
-    const histStockInput = document.getElementById('histStock');
-    const histIndicatorSelect = document.getElementById('histIndicator');
-    const histExchangeSelect = document.getElementById('histExchange');
-    const viewHistoricalBtn = document.getElementById('viewHistorical');
-    const calendarViewDiv = document.getElementById('calendarView');
-    
-    // Global state additions
-    state.historicalData = {};
+   const histStockInput = document.getElementById('histStock');
+  const histExchangeSelect = document.getElementById('histExchange');
+  const histIndicatorsContainer = document.getElementById('histIndicatorsContainer');
+  const histSummaryDiv = document.getElementById('histSummary');
+  const viewHistoricalBtn = document.getElementById('viewHistorical');
+  const calendarViewDiv = document.getElementById('calendarView');
+  
+  // Global state additions
+  state.historicalData = {};
 
     // Load index files when exchange is selected
     exchangeSelect.addEventListener('change', async () => {
@@ -317,76 +349,119 @@
     // Load indicators as checkboxes
     // Replace your existing loadIndicators function with this updated version
 function loadIndicators(sampleData) {
-  indicatorsContainer.innerHTML = '';
-  histIndicatorSelect.innerHTML = '<option value="">-- Select --</option>';
-  
-  // Find indicator fields (most start after "GSM")
-  const startIndex = Object.keys(sampleData).indexOf('GSM');
-  if (startIndex === -1) {
-    indicatorsContainer.innerHTML = '<div class="text-danger p-3">No indicators found in data</div>';
-    return;
-  }
-  
-  const fields = Object.keys(sampleData);
-  state.indicators = fields.slice(startIndex);
-  
-  // Create checkboxes for indicators
-  state.indicators.forEach(indicator => {
-    if (indicator === '' || indicator.startsWith('Filler')) return;
+    indicatorsContainer.innerHTML = '';
+    histIndicatorsContainer.innerHTML = '';
     
-    // Add to indicators container
-    const div = document.createElement('div');
-    div.className = 'indicator-item';
+    // Find indicator fields (most start after "GSM")
+    const startIndex = Object.keys(sampleData).indexOf('GSM');
+    if (startIndex === -1) {
+      indicatorsContainer.innerHTML = '<div class="text-danger p-3">No indicators found in data</div>';
+      histIndicatorsContainer.innerHTML = '<div class="text-danger p-3">No indicators found in data</div>';
+      return;
+    }
     
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.className = 'form-check-input me-2';
-    checkbox.id = `ind-${indicator}`;
-    checkbox.value = indicator;
-    checkbox.name = 'indicators';
+    const fields = Object.keys(sampleData);
+    state.indicators = fields.slice(startIndex);
     
-    const label = document.createElement('label');
-    label.className = 'form-check-label';
-    label.htmlFor = `ind-${indicator}`;
-    label.textContent = indicator;
-    
-    checkbox.addEventListener('change', updateSummary);
-    
-    div.appendChild(checkbox);
-    div.appendChild(label);
-    indicatorsContainer.appendChild(div);
-    
-    // Add to historical indicator dropdown
-    const option = document.createElement('option');
-    option.value = indicator;
-    option.textContent = indicator;
-    histIndicatorSelect.appendChild(option);
-  });
-}    
+    // Create checkboxes for regular indicators
+    state.indicators.forEach(indicator => {
+      if (indicator === '' || indicator.startsWith('Filler')) return;
+      
+      // Add to indicators container for main view
+      const div = document.createElement('div');
+      div.className = 'indicator-item';
+      
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'form-check-input me-2';
+      checkbox.id = `ind-${indicator}`;
+      checkbox.value = indicator;
+      checkbox.name = 'indicators';
+      
+      const label = document.createElement('label');
+      label.className = 'form-check-label';
+      label.htmlFor = `ind-${indicator}`;
+      label.textContent = indicator;
+      
+      checkbox.addEventListener('change', updateSummary);
+      
+      div.appendChild(checkbox);
+      div.appendChild(label);
+      indicatorsContainer.appendChild(div);
+      
+      // Add to historical indicators container
+      const histDiv = document.createElement('div');
+      histDiv.className = 'indicator-item';
+      
+      const histCheckbox = document.createElement('input');
+      histCheckbox.type = 'checkbox';
+      histCheckbox.className = 'form-check-input me-2';
+      histCheckbox.id = `hist-ind-${indicator}`;
+      histCheckbox.value = indicator;
+      histCheckbox.name = 'hist-indicators';
+      
+      const histLabel = document.createElement('label');
+      histLabel.className = 'form-check-label';
+      histLabel.htmlFor = `hist-ind-${indicator}`;
+      histLabel.textContent = indicator;
+      
+      histCheckbox.addEventListener('change', updateHistSummary);
+      
+      histDiv.appendChild(histCheckbox);
+      histDiv.appendChild(histLabel);
+      histIndicatorsContainer.appendChild(histDiv);
+    });
+  }    
 
       // Historical view button event listener
+   // Update summary for historical indicators
+  function updateHistSummary() {
+    const selectedIndicators = Array.from(
+      document.querySelectorAll('input[name="hist-indicators"]:checked')
+    ).map(cb => cb.value);
+    
+    if (selectedIndicators.length === 0) {
+      histSummaryDiv.innerHTML = '<em>No indicators selected</em>';
+      return;
+    }
+    
+    histSummaryDiv.innerHTML = '';
+    selectedIndicators.forEach(ind => {
+      const badge = document.createElement('span');
+      badge.className = 'badge bg-primary me-2 mb-2';
+      badge.textContent = ind;
+      histSummaryDiv.appendChild(badge);
+    });
+  }
+  
+  // Modify to load historical data for multiple indicators
   viewHistoricalBtn.addEventListener('click', async () => {
     const stock = histStockInput.value.trim();
-    const indicator = histIndicatorSelect.value;
     const exchange = histExchangeSelect.value.toLowerCase();
+    const selectedIndicators = Array.from(
+      document.querySelectorAll('input[name="hist-indicators"]:checked')
+    ).map(cb => cb.value);
     
-    if (!stock || !indicator || !exchange) {
-      calendarViewDiv.innerHTML = '<div class="alert alert-warning">Please select stock, indicator and exchange</div>';
+    if (!stock || !exchange || selectedIndicators.length === 0) {
+      calendarViewDiv.innerHTML = '<div class="alert alert-warning">Please select stock, at least one indicator, and exchange</div>';
       return;
     }
     
     calendarViewDiv.innerHTML = '<div class="alert alert-info">Loading historical data... <span class="loading"></span></div>';
     
     try {
-      await fetchHistoricalData(stock, indicator, exchange);
-      renderCalendarView(stock, indicator, exchange);
+      // Load data for all selected indicators
+      for (const indicator of selectedIndicators) {
+        await fetchHistoricalData(stock, indicator, exchange);
+      }
+      renderCalendarView(stock, selectedIndicators, exchange);
     } catch (error) {
       calendarViewDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
       console.error(error);
     }
   });
   
-  // Fetch historical data for a stock and indicator
+  // Fetch historical data for a stock and indicator (keep this function the same)
   async function fetchHistoricalData(stock, indicator, exchange) {
     const files = state.indexFiles[exchange];
     if (!files || files.length === 0) {
@@ -444,6 +519,306 @@ function loadIndicators(sampleData) {
     state.historicalData[cacheKey] = data;
     return data;
   }
+  
+  // Render calendar view with multiple indicators
+  function renderCalendarView(stock, indicators, exchange) {
+    // Check if we have data for at least one indicator
+    let hasAnyData = false;
+    const allData = {};
+    
+    // Collect data for all indicators
+    indicators.forEach(indicator => {
+      const cacheKey = `${exchange}_${stock}_${indicator}`;
+      const data = state.historicalData[cacheKey] || {};
+      
+      if (Object.keys(data).length > 0) {
+        hasAnyData = true;
+        
+        // Merge data into allData structure
+        for (const dateStr in data) {
+          if (!allData[dateStr]) {
+            allData[dateStr] = {};
+          }
+          allData[dateStr][indicator] = data[dateStr];
+        }
+      }
+    });
+    
+    if (!hasAnyData) {
+      calendarViewDiv.innerHTML = '<div class="alert alert-warning">No historical data found for the selected criteria</div>';
+      return;
+    }
+    
+    // Group dates by month
+    const months = {};
+    for (const dateStr in allData) {
+      const date = new Date(dateStr);
+      const monthYear = `${date.getMonth() + 1}-${date.getFullYear()}`;
+      
+      if (!months[monthYear]) {
+        months[monthYear] = [];
+      }
+      
+      months[monthYear].push({
+        date: date,
+        values: allData[dateStr]
+      });
+    }
+    
+    // Sort months
+    const sortedMonths = Object.keys(months).sort((a, b) => {
+      const [monthA, yearA] = a.split('-').map(Number);
+      const [monthB, yearB] = b.split('-').map(Number);
+      
+      if (yearA !== yearB) return yearA - yearB;
+      return monthA - monthB;
+    });
+    
+    // Create a map of indicator colors
+    const indicatorColors = {};
+    indicators.forEach((indicator, index) => {
+      // Create a color palette
+      const colors = [
+        '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
+        '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
+      ];
+      indicatorColors[indicator] = colors[index % colors.length];
+    });
+    
+    // Build calendar HTML
+    let html = `
+      <div class="card">
+        <div class="card-header bg-primary text-white">
+          <h4 class="mb-0">Historical Data for ${stock} (${exchange.toUpperCase()})</h4>
+        </div>
+        <div class="card-body calendar-wrapper">
+          <div class="legend">
+    `;
+    
+    // Add legend for indicators
+    indicators.forEach(indicator => {
+      html += `
+        <div class="legend-item">
+          <span class="legend-color" style="background-color: ${indicatorColors[indicator]}"></span>
+          ${indicator}
+        </div>
+      `;
+    });
+    
+    html += `
+          </div>
+    `;
+    
+    // Add each month
+    sortedMonths.forEach(monthKey => {
+      const [month, year] = monthKey.split('-').map(Number);
+      const monthDate = new Date(year, month - 1, 1);
+      const monthName = monthDate.toLocaleString('default', { month: 'long' });
+      
+      html += `
+        <div class="calendar-month">
+          <h5>${monthName} ${year}</h5>
+          <div class="calendar-grid">
+            <div class="calendar-weekday">Sun</div>
+            <div class="calendar-weekday">Mon</div>
+            <div class="calendar-weekday">Tue</div>
+            <div class="calendar-weekday">Wed</div>
+            <div class="calendar-weekday">Thu</div>
+            <div class="calendar-weekday">Fri</div>
+            <div class="calendar-weekday">Sat</div>
+      `;
+      
+      const firstDay = new Date(year, month - 1, 1).getDay();
+      const lastDate = new Date(year, month, 0).getDate();
+      
+      // Add empty cells for days before first day of month
+      for (let i = 0; i < firstDay; i++) {
+        html += '<div class="calendar-day"></div>';
+      }
+      
+      // Add days of the month
+      for (let day = 1; day <= lastDate; day++) {
+        const date = new Date(year, month - 1, day);
+        const dateStr = date.toISOString().split('T')[0];
+        const weekday = date.getDay();
+        const isWeekend = weekday === 0 || weekday === 6;
+        
+        const dayData = months[monthKey].find(d => 
+          d.date.getDate() === day &&
+          d.date.getMonth() === month - 1 &&
+          d.date.getFullYear() === year
+        );
+        
+        const hasData = !!dayData;
+        
+        html += `
+          <div class="calendar-day ${isWeekend ? 'weekend' : ''} ${hasData ? 'has-data' : ''}" 
+               data-date="${dateStr}">
+            <div class="calendar-date">${day}</div>
+        `;
+        
+        if (hasData) {
+          // Add each indicator value
+          indicators.forEach(indicator => {
+            if (dayData.values[indicator] !== undefined) {
+              const value = dayData.values[indicator];
+              let valueClass = '';
+              
+              if (!isNaN(Number(value))) {
+                const numValue = Number(value);
+                if (numValue >= 80) valueClass = 'value-high';
+                else if (numValue >= 50) valueClass = 'value-medium';
+                else valueClass = 'value-low';
+              }
+              
+              html += `
+                <div class="indicator-value">
+                  <span class="indicator-label" style="color: ${indicatorColors[indicator]}">${indicator}:</span>
+                  <span class="${valueClass}">${value}</span>
+                </div>
+              `;
+            }
+          });
+        }
+        
+        html += `
+          </div>
+        `;
+      }
+      
+      html += `
+          </div>
+        </div>
+      `;
+    });
+    
+    html += `
+        </div>
+      </div>
+    `;
+    
+    calendarViewDiv.innerHTML = html;
+    
+    // Add click handlers to days with data
+    document.querySelectorAll('.calendar-day.has-data').forEach(day => {
+      day.addEventListener('click', () => {
+        const date = day.getAttribute('data-date');
+        
+        // Set date in the main form
+        dateSelect.value = date;
+        
+        // Trigger date change to load stock data
+        dateSelect.dispatchEvent(new Event('change'));
+        
+        // Set stock input value
+        setTimeout(() => {
+          stockInput.value = stock;
+          
+          // Check each indicator checkbox that was selected in historical view
+          indicators.forEach(indicator => {
+            const indicatorCheckbox = document.getElementById(`ind-${indicator}`);
+            if (indicatorCheckbox) {
+              indicatorCheckbox.checked = true;
+            }
+          });
+          
+          // Update summary
+          updateSummary();
+          
+          // Scroll to form
+          form.scrollIntoView({ behavior: 'smooth' });
+        }, 500);
+      });
+    });
+  }
+  
+  // Load indicators for historical view when exchange changes
+  histExchangeSelect.addEventListener('change', async () => {
+    const exchange = histExchangeSelect.value.toLowerCase();
+    if (!exchange) return;
+    
+    // If no index files loaded yet, try to load them
+    if (state.indexFiles[exchange].length === 0) {
+      try {
+        const indexFileName = exchange === 'nse' ? 'nse_json/index.json' : 'bse_json/index.json';
+        const response = await fetch(indexFileName);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to load index file for ${exchange.toUpperCase()}`);
+        }
+        
+        const indexData = await response.json();
+        state.indexFiles[exchange] = indexData;
+      } catch (error) {
+        histIndicatorsContainer.innerHTML = `<div class="text-danger p-3">Error: ${error.message}</div>`;
+        console.error(error);
+        return;
+      }
+    }
+    
+    // If we have files, try to load a sample to get indicators
+    if (state.indexFiles[exchange].length > 0) {
+      histIndicatorsContainer.innerHTML = '<div class="text-center p-3">Loading indicators...</div>';
+      
+      try {
+        const sampleFile = state.indexFiles[exchange][0];
+        const response = await fetch(sampleFile);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to load sample data file`);
+        }
+        
+        const data = await response.json();
+        
+        // Use first stock data to get indicators
+        let sampleData;
+        if (Array.isArray(data) && data.length > 0) {
+          sampleData = data[0];
+        } else {
+          sampleData = data;
+        }
+        
+        // Find indicator fields (most start after "GSM")
+        const startIndex = Object.keys(sampleData).indexOf('GSM');
+        if (startIndex === -1) {
+          throw new Error('No indicators found in data');
+        }
+        
+        const fields = Object.keys(sampleData);
+        const indicators = fields.slice(startIndex);
+        
+        // Populate historical indicators container
+        histIndicatorsContainer.innerHTML = '';
+        indicators.forEach(indicator => {
+          if (indicator === '' || indicator.startsWith('Filler')) return;
+          
+          const div = document.createElement('div');
+          div.className = 'indicator-item';
+          
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.className = 'form-check-input me-2';
+          checkbox.id = `hist-ind-${indicator}`;
+          checkbox.value = indicator;
+          checkbox.name = 'hist-indicators';
+          
+          const label = document.createElement('label');
+          label.className = 'form-check-label';
+          label.htmlFor = `hist-ind-${indicator}`;
+          label.textContent = indicator;
+          
+          checkbox.addEventListener('change', updateHistSummary);
+          
+          div.appendChild(checkbox);
+          div.appendChild(label);
+          histIndicatorsContainer.appendChild(div);
+        });
+      } catch (error) {
+        histIndicatorsContainer.innerHTML = `<div class="text-danger p-3">Error: ${error.message}</div>`;
+        console.error(error);
+      }
+    }
+  });
   
   // Render calendar view
   function renderCalendarView(stock, indicator, exchange) {
