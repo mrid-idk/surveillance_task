@@ -47,13 +47,11 @@
         </select>
       </div>
 
-      <!-- Date Picker -->
+      <!-- Date Picker (Calendar) -->
       <div class="form-section">
         <label for="date" class="form-label">Select Date</label>
-        <select class="form-select" id="date" required>
-          <option value="">-- Select Date --</option>
-        </select>
-        <small class="text-muted">Available dates will load after selecting an exchange</small>
+        <input type="date" class="form-control" id="date" required>
+        <small class="text-muted" id="dateAvailability"></small>
       </div>
 
       <!-- Stock Auto-suggest -->
@@ -99,7 +97,8 @@
       },
       stocks: [],
       indicators: [],
-      dateFileMap: {}
+      dateFileMap: {},
+      availableDates: new Set()
     };
 
     // DOM elements
@@ -121,7 +120,7 @@
       
       try {
         // Load index file based on exchange
-        const indexFileName = exchange === 'nse' ? 'nse_json/index.json' : 'bse_json/index_bse.json';
+        const indexFileName = exchange === 'nse' ? 'nse_json/index.json' : 'bse_json/index.json';
         const response = await fetch(indexFileName);
         
         if (!response.ok) {
@@ -302,12 +301,16 @@
         return;
       }
       
+      // Check if selected date has data
+      if (!state.dateFileMap[date]) {
+        outputDiv.innerHTML = '<div class="alert alert-warning">No data available for the selected date</div>';
+        return;
+      }
+      
       outputDiv.innerHTML = '<div class="alert alert-info">Loading data... <span class="loading"></span></div>';
       
       try {
         const filePath = state.dateFileMap[date];
-        if (!filePath) throw new Error('File not found for selected date');
-        
         const response = await fetch(filePath);
         if (!response.ok) throw new Error('Failed to load data file');
         
