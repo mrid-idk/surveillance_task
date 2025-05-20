@@ -7,6 +7,29 @@
   <style>
     body { padding: 2rem; }
     .form-section { margin-bottom: 1.5rem; }
+    .indicator-container {
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid #dee2e6;
+      border-radius: 0.25rem;
+      padding: 0.5rem;
+    }
+    .indicator-item {
+      margin-bottom: 0.5rem;
+    }
+    .loading {
+      display: inline-block;
+      width: 1rem;
+      height: 1rem;
+      border: 0.2em solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: spinner-border .75s linear infinite;
+      margin-left: 0.5rem;
+    }
+    @keyframes spinner-border {
+      to { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
@@ -24,44 +47,43 @@
         </select>
       </div>
 
+      <!-- Date Picker -->
+      <div class="form-section">
+        <label for="date" class="form-label">Select Date</label>
+        <select class="form-select" id="date" required>
+          <option value="">-- Select Date --</option>
+        </select>
+        <small class="text-muted">Available dates will load after selecting an exchange</small>
+      </div>
+
       <!-- Stock Auto-suggest -->
       <div class="form-section">
-        <label for="stock" class="form-label">Stock Name</label>
+        <label for="stock" class="form-label">Stock Name/Symbol</label>
         <input list="stockList" class="form-control" id="stock" placeholder="Type stock name..." required>
         <datalist id="stockList">
           <!-- Populated dynamically -->
         </datalist>
-      </div>
-
-      <!-- Date Picker -->
-      <div class="form-section">
-        <label for="date" class="form-label">Select Date</label>
-        <input type="date" class="form-control" id="date" required>
+        <small class="text-muted">Available stocks will load after selecting date</small>
       </div>
 
       <!-- Indicator Selection -->
       <div class="form-section">
-        <label for="indicators" class="form-label">Choose Indicators</label>
-        <select class="form-select" id="indicators" multiple required>
-          <!-- Add common indicators -->
-          <option value="GSM">GSM</option>
-          <option value="Default">Default</option>
-          <option value="Pledge">Pledge</option>
-          <option value="ESM">ESM</option>
-          <option value="Loss making">Loss making</option>
-          <option value="Company has failed to pay Annual listing fee">Listing Fee Default</option>
-          <option value="SME scrip is not regularly traded">SME Trade Irregularity</option>
-        </select>
+        <label class="form-label">Choose Indicators</label>
+        <div class="indicator-container" id="indicatorsContainer">
+          <div class="text-center p-3">Please select an exchange and date first</div>
+        </div>
       </div>
 
       <!-- Summary -->
       <div class="form-section">
-        <label class="form-label">You selected:</label>
-        <ul id="summary" class="list-group"></ul>
+        <label class="form-label">Selected Indicators:</label>
+        <div id="summary" class="p-2 bg-light rounded">
+          <em>No indicators selected</em>
+        </div>
       </div>
 
       <!-- Submit -->
-      <button type="submit" class="btn btn-primary">Submit</button>
+      <button type="submit" class="btn btn-primary">View Data</button>
     </form>
 
     <!-- Output -->
@@ -69,86 +91,310 @@
   </div>
 
   <script>
-    const form = document.getElementById('stockForm');
-    const indicatorsSelect = document.getElementById('indicators');
-    const summaryList = document.getElementById('summary');
-    const output = document.getElementById('output');
+    // Global state
+    const state = {
+      indexFiles: {
+        nse: [],
+        bse: []
+      },
+      stocks: [],
+      indicators: [],
+      dateFileMap: {}
+    };
 
-    // Show selected indicators in summary
-    indicatorsSelect.addEventListener('change', () => {
-      summaryList.innerHTML = '';
-      Array.from(indicatorsSelect.selectedOptions).forEach(opt => {
-        const li = document.createElement('li');
-        li.className = 'list-group-item';
-        li.textContent = opt.value;
-        summaryList.appendChild(li);
-      });
+    // DOM elements
+    const exchangeSelect = document.getElementById('exchange');
+    const dateSelect = document.getElementById('date');
+    const stockInput = document.getElementById('stock');
+    const stockList = document.getElementById('stockList');
+    const indicatorsContainer = document.getElementById('indicatorsContainer');
+    const summaryDiv = document.getElementById('summary');
+    const outputDiv = document.getElementById('output');
+    const form = document.getElementById('stockForm');
+
+    // Load index files when exchange is selected
+    exchangeSelect.addEventListener('change', async () => {
+      const exchange = exchangeSelect.value.toLowerCase();
+      if (!exchange) return;
+      
+      dateSelect.innerHTML = '<option value="">-- Loading dates... --</option>';
+      
+      try {
+        // Load index file based on exchange
+        const indexFileName = exchange === 'nse' ? 'nse_json/index.json' : 'bse_json/index_bse.json';
+        const response = await fetch(indexFileName);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to load index file for ${exchange.toUpperCase()}`);
+        }
+        
+        const indexData = await response.json();
+        state.indexFiles[exchange] = indexData;
+        
+        // Extract and format dates
+        populateDates(exchange, indexData);
+      } catch (error) {
+        dateSelect.innerHTML = '<option value="">-- Error loading dates --</option>';
+        console.error(error);
+      }
     });
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
+    // Extract dates from filenames and populate date dropdown
+    function populateDates(exchange, indexFiles) {
+      dateSelect.innerHTML = '<option value="">-- Select Date --</option>';
+      
+      indexFiles.forEach(filePath => {
+        // Extract date from filename (IND150525.json → 15/05/25)
+        const match = filePath.match(/IND(\d{2})(\d{2})(\d{2})\.json/);
+        if (match) {
+          const day = match[1];
+          const month = match[2];
+          const year = `20${match[3]}`;
+          const dateStr = `${year}-${month}-${day}`;
+          const displayDate = `${day}/${month}/${year}`;
+          
+          // Store mapping of formatted date to filename
+          state.dateFileMap[dateStr] = filePath;
+          
+          const option = document.createElement('option');
+          option.value = dateStr;
+          option.textContent = displayDate;
+          dateSelect.appendChild(option);
+        }
+      });
+    }
 
-      const exchange = document.getElementById('exchange').value;
-      const stockName = document.getElementById('stock').value.trim().toUpperCase();
-      const dateInput = document.getElementById('date').value;
-      const indicators = Array.from(indicatorsSelect.selectedOptions).map(opt => opt.value);
+    // Load stocks and indicators when date is selected
+    dateSelect.addEventListener('change', async () => {
+      const date = dateSelect.value;
+      const exchange = exchangeSelect.value.toLowerCase();
+      
+      if (!date || !exchange) return;
+      
+      stockInput.value = '';
+      indicatorsContainer.innerHTML = '<div class="text-center p-3">Loading indicators...</div>';
+      
+      try {
+        const filePath = state.dateFileMap[date];
+        if (!filePath) throw new Error('File path not found for selected date');
+        
+        const response = await fetch(filePath);
+        if (!response.ok) throw new Error('Failed to load data file');
+        
+        const data = await response.json();
+        
+        // Extract stocks and indicators
+        loadStocksAndIndicators(exchange, data);
+      } catch (error) {
+        indicatorsContainer.innerHTML = `<div class="text-danger p-3">Error: ${error.message}</div>`;
+        console.error(error);
+      }
+    });
 
-      if (!exchange || !stockName || !dateInput || indicators.length === 0) {
-        alert("Please fill all fields");
+    // Load stocks and indicators from data
+    function loadStocksAndIndicators(exchange, data) {
+      stockList.innerHTML = '';
+      state.stocks = [];
+      
+      // Get stock symbols from data
+      if (Array.isArray(data)) {
+        const key = exchange === 'nse' ? 'Symbol' : 'ScripId';
+        
+        // Extract unique stock symbols
+        const stockSet = new Set(data.map(item => item[key]).filter(Boolean));
+        state.stocks = Array.from(stockSet);
+        
+        // Get indicators from first item
+        if (data.length > 0) {
+          loadIndicators(data[0]);
+        }
+      } else {
+        // Single item in data
+        const key = exchange === 'nse' ? 'Symbol' : 'ScripId';
+        if (data[key]) {
+          state.stocks.push(data[key]);
+        }
+        loadIndicators(data);
+      }
+      
+      // Populate stock suggestions
+      state.stocks.sort().forEach(stock => {
+        const option = document.createElement('option');
+        option.value = stock;
+        stockList.appendChild(option);
+      });
+    }
+
+    // Load indicators as checkboxes
+    function loadIndicators(sampleData) {
+      indicatorsContainer.innerHTML = '';
+      
+      // Find indicator fields (most start after "GSM")
+      const startIndex = Object.keys(sampleData).indexOf('GSM');
+      if (startIndex === -1) {
+        indicatorsContainer.innerHTML = '<div class="text-danger p-3">No indicators found in data</div>';
         return;
       }
+      
+      const fields = Object.keys(sampleData);
+      state.indicators = fields.slice(startIndex);
+      
+      // Create checkboxes for indicators
+      state.indicators.forEach(indicator => {
+        if (indicator === '' || indicator.startsWith('Filler')) return;
+        
+        const div = document.createElement('div');
+        div.className = 'indicator-item';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'form-check-input me-2';
+        checkbox.id = `ind-${indicator}`;
+        checkbox.value = indicator;
+        checkbox.name = 'indicators';
+        
+        const label = document.createElement('label');
+        label.className = 'form-check-label';
+        label.htmlFor = `ind-${indicator}`;
+        label.textContent = indicator;
+        
+        checkbox.addEventListener('change', updateSummary);
+        
+        div.appendChild(checkbox);
+        div.appendChild(label);
+        indicatorsContainer.appendChild(div);
+      });
+    }
 
-      const dateObj = new Date(dateInput);
-      const dd = String(dateObj.getDate()).padStart(2, '0');
-      const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const yy = String(dateObj.getFullYear()).slice(-2);
-      const filename = `IND${dd}${mm}${yy}.json`;
-      const filepath = `docs/${exchange.toLowerCase()}_json/${filename}`;
+    // Update summary of selected indicators
+    function updateSummary() {
+      const selectedIndicators = Array.from(
+        document.querySelectorAll('input[name="indicators"]:checked')
+      ).map(cb => cb.value);
+      
+      if (selectedIndicators.length === 0) {
+        summaryDiv.innerHTML = '<em>No indicators selected</em>';
+        return;
+      }
+      
+      summaryDiv.innerHTML = '';
+      selectedIndicators.forEach(ind => {
+        const badge = document.createElement('span');
+        badge.className = 'badge bg-primary me-2 mb-2';
+        badge.textContent = ind;
+        summaryDiv.appendChild(badge);
+      });
+    }
 
+    // Form submission
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const exchange = exchangeSelect.value;
+      const date = dateSelect.value;
+      const stockName = stockInput.value.trim();
+      const selectedIndicators = Array.from(
+        document.querySelectorAll('input[name="indicators"]:checked')
+      ).map(cb => cb.value);
+      
+      if (!exchange || !date || !stockName || selectedIndicators.length === 0) {
+        outputDiv.innerHTML = '<div class="alert alert-warning">Please fill all fields and select at least one indicator</div>';
+        return;
+      }
+      
+      outputDiv.innerHTML = '<div class="alert alert-info">Loading data... <span class="loading"></span></div>';
+      
       try {
-        const res = await fetch(filepath);
-        if (!res.ok) throw new Error("File not found");
-
-        const data = await res.json();
-        const key = (exchange === 'NSE') ? 'Symbol' : 'ScripId';
-
-        const matches = Array.isArray(data)
-          ? data.filter(entry => entry[key]?.toUpperCase() === stockName)
-          : [data].filter(entry => entry[key]?.toUpperCase() === stockName);
-
-        if (matches.length === 0) {
-          output.innerHTML = `<div class="alert alert-warning">No data found for ${stockName} in ${exchange} on ${dateInput}</div>`;
+        const filePath = state.dateFileMap[date];
+        if (!filePath) throw new Error('File not found for selected date');
+        
+        const response = await fetch(filePath);
+        if (!response.ok) throw new Error('Failed to load data file');
+        
+        const data = await response.json();
+        const key = exchange === 'NSE' ? 'Symbol' : 'ScripId';
+        
+        // Find matching stock data
+        const stockData = Array.isArray(data)
+          ? data.filter(item => item[key] === stockName)
+          : data[key] === stockName ? [data] : [];
+        
+        if (stockData.length === 0) {
+          outputDiv.innerHTML = `<div class="alert alert-warning">No data found for ${stockName} in ${exchange} on ${formatDisplayDate(date)}</div>`;
           return;
         }
-
-        let html = `<h4>Results for ${stockName} on ${dateInput} (${exchange})</h4><table class="table table-bordered"><thead><tr>`;
-        indicators.forEach(ind => html += `<th>${ind}</th>`);
-        html += '</tr></thead><tbody>';
-
-        matches.forEach(row => {
-          html += '<tr>';
-          indicators.forEach(ind => html += `<td>${row[ind] || '-'}</td>`);
-          html += '</tr>';
-        });
-
-        html += '</tbody></table>';
-        output.innerHTML = html;
-
-      } catch (err) {
-        output.innerHTML = `<div class="alert alert-danger">Error: ${err.message}</div>`;
+        
+        // Display results
+        displayResults(stockData, selectedIndicators, stockName, date, exchange);
+      } catch (error) {
+        outputDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+        console.error(error);
       }
     });
 
-    // Optional: Load common stock names
-    window.addEventListener('load', () => {
-      const stockList = ["RELIANCE", "TCS", "INFY", "ICICIBANK", "SBIN", "HDFCBANK", "LEGACY", "21STCENMGM"];
-      const datalist = document.getElementById('stockList');
-      stockList.forEach(name => {
-        const opt = document.createElement('option');
-        opt.value = name;
-        datalist.appendChild(opt);
+    // Format date for display
+    function formatDisplayDate(dateStr) {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-GB', {
+        day: '2-digit', 
+        month: '2-digit', 
+        year: 'numeric'
       });
-    });
+    }
+
+    // Display results in a table
+    function displayResults(stockData, indicators, stockName, date, exchange) {
+      let html = `
+        <div class="card mt-4">
+          <div class="card-header bg-primary text-white">
+            <h4 class="mb-0">Results for ${stockName} on ${formatDisplayDate(date)} (${exchange})</h4>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-bordered table-striped">
+                <thead class="table-dark">
+                  <tr>
+                    <th>Indicator</th>
+                    <th>Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+      `;
+      
+      // Add each selected indicator
+      stockData.forEach(stock => {
+        indicators.forEach(indicator => {
+          const value = stock[indicator] || '-';
+          let valueClass = '';
+          
+          // Add color coding for values if they are numeric
+          if (!isNaN(value)) {
+            if (value === '0') {
+              valueClass = 'bg-danger text-white';
+            } else if (value === '100') {
+              valueClass = 'bg-success text-white';
+            }
+          }
+          
+          html += `
+            <tr>
+              <td>${indicator}</td>
+              <td class="${valueClass}">${value}</td>
+            </tr>
+          `;
+        });
+      });
+      
+      html += `
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      outputDiv.innerHTML = html;
+    }
   </script>
 </body>
 </html>
