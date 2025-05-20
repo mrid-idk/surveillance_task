@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Stock Surveillance Data Viewer</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { padding: 2rem; }
+    .form-section { margin-bottom: 1.5rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2 class="mb-4">Stock Surveillance Data Viewer</h2>
+
+    <form id="stockForm">
+      <!-- Exchange Selection -->
+      <div class="form-section">
+        <label for="exchange" class="form-label">Select Exchange</label>
+        <select class="form-select" id="exchange" required>
+          <option value="">-- Select --</option>
+          <option value="NSE">NSE</option>
+          <option value="BSE">BSE</option>
+        </select>
+      </div>
+
+      <!-- Stock Auto-suggest -->
+      <div class="form-section">
+        <label for="stock" class="form-label">Stock Name</label>
+        <input list="stockList" class="form-control" id="stock" placeholder="Type stock name..." required>
+        <datalist id="stockList">
+          <!-- Populated dynamically -->
+        </datalist>
+      </div>
+
+      <!-- Date Picker -->
+      <div class="form-section">
+        <label for="date" class="form-label">Select Date</label>
+        <input type="date" class="form-control" id="date" required>
+      </div>
+
+      <!-- Indicator Selection -->
+      <div class="form-section">
+        <label for="indicators" class="form-label">Choose Indicators</label>
+        <select class="form-select" id="indicators" multiple required>
+          <!-- Add common indicators -->
+          <option value="GSM">GSM</option>
+          <option value="Default">Default</option>
+          <option value="Pledge">Pledge</option>
+          <option value="ESM">ESM</option>
+          <option value="Loss making">Loss making</option>
+          <option value="Company has failed to pay Annual listing fee">Listing Fee Default</option>
+          <option value="SME scrip is not regularly traded">SME Trade Irregularity</option>
+        </select>
+      </div>
+
+      <!-- Summary -->
+      <div class="form-section">
+        <label class="form-label">You selected:</label>
+        <ul id="summary" class="list-group"></ul>
+      </div>
+
+      <!-- Submit -->
+      <button type="submit" class="btn btn-primary">Submit</button>
+    </form>
+
+    <!-- Output -->
+    <div id="output" class="mt-4"></div>
+  </div>
+
+  <script>
+    const form = document.getElementById('stockForm');
+    const indicatorsSelect = document.getElementById('indicators');
+    const summaryList = document.getElementById('summary');
+    const output = document.getElementById('output');
+
+    // Show selected indicators in summary
+    indicatorsSelect.addEventListener('change', () => {
+      summaryList.innerHTML = '';
+      Array.from(indicatorsSelect.selectedOptions).forEach(opt => {
+        const li = document.createElement('li');
+        li.className = 'list-group-item';
+        li.textContent = opt.value;
+        summaryList.appendChild(li);
+      });
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const exchange = document.getElementById('exchange').value;
+      const stockName = document.getElementById('stock').value.trim().toUpperCase();
+      const dateInput = document.getElementById('date').value;
+      const indicators = Array.from(indicatorsSelect.selectedOptions).map(opt => opt.value);
+
+      if (!exchange || !stockName || !dateInput || indicators.length === 0) {
+        alert("Please fill all fields");
+        return;
+      }
+
+      const dateObj = new Date(dateInput);
+      const dd = String(dateObj.getDate()).padStart(2, '0');
+      const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const yy = String(dateObj.getFullYear()).slice(-2);
+      const filename = `IND${dd}${mm}${yy}.json`;
+      const filepath = `docs/${exchange.toLowerCase()}_json/${filename}`;
+
+      try {
+        const res = await fetch(filepath);
+        if (!res.ok) throw new Error("File not found");
+
+        const data = await res.json();
+        const key = (exchange === 'NSE') ? 'Symbol' : 'ScripId';
+
+        const matches = Array.isArray(data)
+          ? data.filter(entry => entry[key]?.toUpperCase() === stockName)
+          : [data].filter(entry => entry[key]?.toUpperCase() === stockName);
+
+        if (matches.length === 0) {
+          output.innerHTML = `<div class="alert alert-warning">No data found for ${stockName} in ${exchange} on ${dateInput}</div>`;
+          return;
+        }
+
+        let html = `<h4>Results for ${stockName} on ${dateInput} (${exchange})</h4><table class="table table-bordered"><thead><tr>`;
+        indicators.forEach(ind => html += `<th>${ind}</th>`);
+        html += '</tr></thead><tbody>';
+
+        matches.forEach(row => {
+          html += '<tr>';
+          indicators.forEach(ind => html += `<td>${row[ind] || '-'}</td>`);
+          html += '</tr>';
+        });
+
+        html += '</tbody></table>';
+        output.innerHTML = html;
+
+      } catch (err) {
+        output.innerHTML = `<div class="alert alert-danger">Error: ${err.message}</div>`;
+      }
+    });
+
+    // Optional: Load common stock names
+    window.addEventListener('load', () => {
+      const stockList = ["RELIANCE", "TCS", "INFY", "ICICIBANK", "SBIN", "HDFCBANK", "LEGACY", "21STCENMGM"];
+      const datalist = document.getElementById('stockList');
+      stockList.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        datalist.appendChild(opt);
+      });
+    });
+  </script>
+</body>
+</html>
