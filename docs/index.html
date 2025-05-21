@@ -695,28 +695,30 @@ function loadIndicators(sampleData) {
       `;
       
       // Add each selected indicator
-      stockData.forEach(stock => {
-        indicators.forEach(indicator => {
-          const value = stock[indicator] || '-';
-          let valueClass = '';
-          
-          // Add color coding for values if they are numeric
-          if (!isNaN(value)) {
-            if (value === '0') {
-              valueClass = 'bg-danger text-white';
-            } else if (value === '100') {
-              valueClass = 'bg-success text-white';
-            }
-          }
-          
-          html += `
-            <tr>
-              <td>${indicator}</td>
-              <td class="${valueClass}">${value}</td>
-            </tr>
-          `;
-        });
-      });
+     stockData.forEach(stock => {
+  indicators.forEach(indicator => {
+    const value = stock[indicator] || '-';
+    let valueClass = '';
+    let displayValue = value;
+    
+    // Add color coding for values if they are numeric
+    if (!isNaN(value)) {
+      if (value === '0') {
+        valueClass = 'bg-danger text-white';
+      } else if (value === '100') {
+        valueClass = 'bg-success text-white';
+        displayValue = `${value} (Not Applicable)`;
+      }
+    }
+    
+    html += `
+      <tr>
+        <td>${indicator}</td>
+        <td class="${valueClass}">${displayValue}</td>
+      </tr>
+    `;
+  });
+});
       
       html += `
                 </tbody>
