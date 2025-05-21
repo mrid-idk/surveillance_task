@@ -373,9 +373,36 @@ viewIndicatorDataBtn.addEventListener('click', async () => {
 });
 
 // Display indicator data for all stocks
+// Add this function to count row types (add to global scope)
+function countRowTypes(data, selectedIndicator) {
+  const counts = {
+    all: data.length,
+    na: 0,
+    zero: 0,
+    other: 0
+  };
+  
+  data.forEach(item => {
+    const value = item[selectedIndicator];
+    if (value === '100') {
+      counts.na++;
+    } else if (value === '0') {
+      counts.zero++;
+    } else {
+      counts.other++;
+    }
+  });
+  
+  return counts;
+}
+
+// Replace the existing displayIndicatorData function with this one
 function displayIndicatorData(data, selectedIndicators, date, exchange) {
   const stocksData = Array.isArray(data) ? data : [data];
   const key = exchange === 'nse' ? 'Symbol' : 'ScripId';
+  
+  // Calculate counts for first selected indicator
+  const counts = countRowTypes(stocksData, selectedIndicators[0]);
   
   let html = `
     <div class="card">
@@ -383,8 +410,16 @@ function displayIndicatorData(data, selectedIndicators, date, exchange) {
         <h4 class="mb-0">Indicator Data for ${formatDisplayDate(date)} (${exchange.toUpperCase()})</h4>
       </div>
       <div class="card-body">
+        <div class="mb-3">
+          <div class="btn-group" role="group" aria-label="Filter options">
+            <button type="button" class="btn btn-outline-primary filter-btn active" data-filter="all">All Values (${counts.all})</button>
+            <button type="button" class="btn btn-outline-success filter-btn" data-filter="na">Not Applicable (${counts.na})</button>
+            <button type="button" class="btn btn-outline-danger filter-btn" data-filter="zero">Zero Values (${counts.zero})</button>
+            <button type="button" class="btn btn-outline-warning filter-btn" data-filter="other">Other Values (${counts.other})</button>
+          </div>
+        </div>
         <div class="table-responsive">
-          <table class="table table-bordered table-striped table-sm">
+          <table class="table table-bordered table-striped table-sm" id="indicatorTable">
             <thead class="table-dark">
               <tr>
                 <th>Stock</th>
@@ -396,8 +431,19 @@ function displayIndicatorData(data, selectedIndicators, date, exchange) {
   
   // Add data for each stock
   stocksData.forEach(stock => {
+    // Determine row type for filtering
+    let rowType = 'other';
+    const firstIndicator = selectedIndicators[0]; // Use first selected indicator for row filtering
+    const firstValue = stock[firstIndicator] || '-';
+    
+    if (firstValue === '100') {
+      rowType = 'na';
+    } else if (firstValue === '0') {
+      rowType = 'zero';
+    }
+    
     html += `
-      <tr>
+      <tr class="filter-row" data-filter-type="${rowType}">
         <td>${stock[key] || 'Unknown'}</td>
     `;
     
@@ -432,8 +478,33 @@ function displayIndicatorData(data, selectedIndicators, date, exchange) {
   `;
   
   indicatorDataOutputDiv.innerHTML = html;
+  
+  // Add filter functionality
+  setTimeout(() => {
+    const filterButtons = document.querySelectorAll('.filter-btn');
+    const rows = document.querySelectorAll('.filter-row');
+    
+    filterButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        // Update active button
+        filterButtons.forEach(btn => btn.classList.remove('active'));
+        button.classList.add('active');
+        
+        const filterType = button.getAttribute('data-filter');
+        
+        // Show/hide rows based on filter
+        rows.forEach(row => {
+          if (filterType === 'all') {
+            row.style.display = '';
+          } else {
+            const rowType = row.getAttribute('data-filter-type');
+            row.style.display = (rowType === filterType) ? '' : 'none';
+          }
+        });
+      });
+    });
+  }, 100);
 }
-
 // View indicator history button click
 viewIndicatorHistoryBtn.addEventListener('click', async () => {
   const exchange = indicatorExchangeSelect.value.toLowerCase();
