@@ -419,7 +419,76 @@ function displayIndicatorData(data, selectedIndicators, date, exchange) {
             </thead>
             <tbody>
   `;
+// Initialize filter handlers
+function initializeFilters(tableId, filterStateId) {
+  const table = document.getElementById(tableId);
+  if (!table) return;
   
+  // Get dropdowns and initialize them with Bootstrap
+  const dropdownElements = table.querySelectorAll('[data-bs-toggle="dropdown"]');
+  dropdownElements.forEach(el => {
+    new bootstrap.Dropdown(el);
+  });
+  
+  // Add click handlers to filter options
+  const filterOptions = table.querySelectorAll('.filter-option');
+  filterOptions.forEach(option => {
+    option.addEventListener('click', function(e) {
+      e.preventDefault();
+      
+      const indicator = this.getAttribute('data-indicator');
+      const filterValue = this.getAttribute('data-filter');
+      
+      // Update filter state
+      window[filterStateId][indicator] = filterValue;
+      
+      // Apply filter to table
+      applyFilters(tableId, filterStateId);
+    });
+  });
+}
+
+// Apply all active filters to the table
+function applyFilters(tableId, filterStateId) {
+  const table = document.getElementById(tableId);
+  if (!table) return;
+  
+  const rows = table.querySelectorAll('tbody tr');
+  const headers = table.querySelectorAll('thead th');
+  const filterState = window[filterStateId];
+  
+  // Process each row
+  rows.forEach(row => {
+    let showRow = true;
+    
+    // Check each cell that needs filtering
+    const cells = row.querySelectorAll('td');
+    
+    headers.forEach((header, index) => {
+      // Skip the first column (stock name)
+      if (index === 0) return;
+      
+      // Get indicator name from header text
+      const headerText = header.textContent.trim().split('\n')[0];
+      
+      // Check if this indicator has a filter applied
+      if (filterState[headerText]) {
+        const cell = cells[index];
+        const isNotApplicable = cell.getAttribute('data-not-applicable') === 'true';
+        
+        // Apply filter logic
+        if (filterState[headerText] === 'applicable' && isNotApplicable) {
+          showRow = false;
+        } else if (filterState[headerText] === 'not-applicable' && !isNotApplicable) {
+          showRow = false;
+        }
+      }
+    });
+    
+    // Show or hide row based on filter results
+    row.style.display = showRow ? '' : 'none';
+  });
+}  
   // Add data for each stock
   stocksData.forEach(stock => {
     html += `
