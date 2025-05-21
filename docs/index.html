@@ -169,6 +169,47 @@
 <div id="calendarView" class="mt-4"></div>
   </div>
 
+  // Add this HTML section to your page (as a new section)
+<div class="mt-5 pt-3 border-top">
+  <h2 class="mb-4">Indicator-Based Analysis</h2>
+  
+  <div class="row">
+    <div class="col-md-6">
+      <div class="form-section">
+        <label for="indicatorExchange" class="form-label">Select Exchange</label>
+        <select class="form-select" id="indicatorExchange">
+          <option value="">-- Select --</option>
+          <option value="NSE">NSE</option>
+          <option value="BSE">BSE</option>
+        </select>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="form-section">
+        <label for="indicatorDate" class="form-label">Select Date</label>
+        <input type="date" class="form-control" id="indicatorDate">
+      </div>
+    </div>
+  </div>
+  
+  <div class="form-section">
+    <label for="indicatorSelect" class="form-label">Select Indicators</label>
+    <select class="form-select" id="indicatorSelect" multiple size="8">
+      <!-- Will be populated dynamically -->
+    </select>
+    <small class="text-muted">Hold Ctrl/Cmd to select multiple indicators</small>
+  </div>
+  
+  <div class="d-flex gap-2 mb-4">
+    <button id="viewIndicatorData" class="btn btn-primary">View Data</button>
+    <button id="viewIndicatorHistory" class="btn btn-success">View Historical Calendar</button>
+  </div>
+  
+  <!-- Outputs -->
+  <div id="indicatorDataOutput" class="mt-3"></div>
+  <div id="indicatorHistoryOutput" class="mt-3"></div>
+</div>
+
   <script>
     // Global state
     const state = {
@@ -181,6 +222,432 @@
       dateFileMap: {},
       availableDates: new Set()
     };
+
+    // Add these DOM elements to your existing declarations
+const indicatorExchangeSelect = document.getElementById('indicatorExchange');
+const indicatorDateInput = document.getElementById('indicatorDate');
+const indicatorSelect = document.getElementById('indicatorSelect');
+const viewIndicatorDataBtn = document.getElementById('viewIndicatorData');
+const viewIndicatorHistoryBtn = document.getElementById('viewIndicatorHistory');
+const indicatorDataOutputDiv = document.getElementById('indicatorDataOutput');
+const indicatorHistoryOutputDiv = document.getElementById('indicatorHistoryOutput');
+
+// Global state additions
+state.indicatorHistoricalData = {};
+
+// Handle exchange selection for indicator analysis
+indicatorExchangeSelect.addEventListener('change', async () => {
+  const exchange = indicatorExchangeSelect.value.toLowerCase();
+  if (!exchange) return;
+  
+  indicatorDateInput.disabled = true;
+  indicatorDateInput.value = '';
+  indicatorSelect.innerHTML = '';
+  
+  try {
+    // Load index file based on exchange (reuse existing logic)
+    const indexFileName = exchange === 'nse' ? 'nse_json/index.json' : 'bse_json/index_bse.json';
+    const response = await fetch(indexFileName);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to load index file for ${exchange.toUpperCase()}`);
+    }
+    
+    const indexData = await response.json();
+    state.indexFiles[exchange] = indexData;
+    
+    // Store available dates
+    populateAvailableDates(indexData);
+    indicatorDateInput.disabled = false;
+  } catch (error) {
+    console.error(error);
+  }
+});
+
+// Populate available dates
+function populateAvailableDates(indexFiles) {
+  // Clear existing date
+  indicatorDateInput.value = '';
+  
+  // Store available dates
+  state.availableDates = new Set();
+  
+  indexFiles.forEach(filePath => {
+    // Extract date from filename (IND150525.json → 15/05/25)
+    const match = filePath.match(/IND(\d{2})(\d{2})(\d{2})\.json/);
+    if (match) {
+      const day = match[1];
+      const month = match[2];
+      const year = `20${match[3]}`;
+      const dateStr = `${year}-${month}-${day}`;
+      
+      // Store mapping of formatted date to filename
+      state.dateFileMap[dateStr] = filePath;
+      state.availableDates.add(dateStr);
+    }
+  });
+}
+
+// Load indicators when date is selected for indicator analysis
+indicatorDateInput.addEventListener('change', async () => {
+  const date = indicatorDateInput.value;
+  const exchange = indicatorExchangeSelect.value.toLowerCase();
+  
+  if (!date || !exchange) return;
+  
+  indicatorSelect.innerHTML = '<option>Loading indicators...</option>';
+  
+  try {
+    const filePath = state.dateFileMap[date];
+    if (!filePath) throw new Error('File path not found for selected date');
+    
+    const response = await fetch(filePath);
+    if (!response.ok) throw new Error('Failed to load data file');
+    
+    const data = await response.json();
+    
+    // Load available indicators
+    loadAvailableIndicators(data);
+  } catch (error) {
+    indicatorSelect.innerHTML = '<option>Error loading indicators</option>';
+    console.error(error);
+  }
+});
+
+// Load available indicators for dropdown
+function loadAvailableIndicators(data) {
+  indicatorSelect.innerHTML = '';
+  
+  // Find indicator fields
+  let sampleData;
+  if (Array.isArray(data)) {
+    sampleData = data[0];
+  } else {
+    sampleData = data;
+  }
+  
+  const startIndex = Object.keys(sampleData).indexOf('GSM');
+  if (startIndex === -1) {
+    indicatorSelect.innerHTML = '<option>No indicators found</option>';
+    return;
+  }
+  
+  const fields = Object.keys(sampleData);
+  state.indicators = fields.slice(startIndex).filter(ind => ind !== '' && !ind.startsWith('Filler'));
+  
+  // Add indicators to dropdown
+  state.indicators.forEach(indicator => {
+    const option = document.createElement('option');
+    option.value = indicator;
+    option.textContent = indicator;
+    indicatorSelect.appendChild(option);
+  });
+}
+
+// View indicator data button click
+viewIndicatorDataBtn.addEventListener('click', async () => {
+  const date = indicatorDateInput.value;
+  const exchange = indicatorExchangeSelect.value.toLowerCase();
+  const selectedIndicators = Array.from(indicatorSelect.selectedOptions).map(opt => opt.value);
+  
+  if (!date || !exchange || selectedIndicators.length === 0) {
+    indicatorDataOutputDiv.innerHTML = '<div class="alert alert-warning">Please select exchange, date and at least one indicator</div>';
+    return;
+  }
+  
+  indicatorDataOutputDiv.innerHTML = '<div class="alert alert-info">Loading data... <span class="loading"></span></div>';
+  
+  try {
+    const filePath = state.dateFileMap[date];
+    const response = await fetch(filePath);
+    if (!response.ok) throw new Error('Failed to load data file');
+    
+    const data = await response.json();
+    
+    // Display indicator data for all stocks
+    displayIndicatorData(data, selectedIndicators, date, exchange);
+  } catch (error) {
+    indicatorDataOutputDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    console.error(error);
+  }
+});
+
+// Display indicator data for all stocks
+function displayIndicatorData(data, selectedIndicators, date, exchange) {
+  const stocksData = Array.isArray(data) ? data : [data];
+  const key = exchange === 'nse' ? 'Symbol' : 'ScripId';
+  
+  let html = `
+    <div class="card">
+      <div class="card-header bg-primary text-white">
+        <h4 class="mb-0">Indicator Data for ${formatDisplayDate(date)} (${exchange.toUpperCase()})</h4>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-bordered table-striped table-sm">
+            <thead class="table-dark">
+              <tr>
+                <th>Stock</th>
+                ${selectedIndicators.map(ind => `<th>${ind}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+  `;
+  
+  // Add data for each stock
+  stocksData.forEach(stock => {
+    html += `
+      <tr>
+        <td>${stock[key] || 'Unknown'}</td>
+    `;
+    
+    // Add selected indicators for this stock
+    selectedIndicators.forEach(indicator => {
+      const value = stock[indicator] || '-';
+      let valueClass = '';
+      let displayValue = value;
+      
+      // Add color coding and "Not Applicable" text for 100 values
+      if (!isNaN(value)) {
+        if (value === '0') {
+          valueClass = 'bg-danger text-white';
+        } else if (value === '100') {
+          valueClass = 'bg-success text-white';
+          displayValue = `${value} (Not Applicable)`;
+        }
+      }
+      
+      html += `<td class="${valueClass}">${displayValue}</td>`;
+    });
+    
+    html += '</tr>';
+  });
+  
+  html += `
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  indicatorDataOutputDiv.innerHTML = html;
+}
+
+// View indicator history button click
+viewIndicatorHistoryBtn.addEventListener('click', async () => {
+  const exchange = indicatorExchangeSelect.value.toLowerCase();
+  const selectedIndicators = Array.from(indicatorSelect.selectedOptions).map(opt => opt.value);
+  
+  if (!exchange || selectedIndicators.length === 0) {
+    indicatorHistoryOutputDiv.innerHTML = '<div class="alert alert-warning">Please select exchange and at least one indicator</div>';
+    return;
+  }
+  
+  // Limit to one indicator for historical view
+  const indicator = selectedIndicators[0];
+  
+  indicatorHistoryOutputDiv.innerHTML = '<div class="alert alert-info">Loading historical data... <span class="loading"></span></div>';
+  
+  try {
+    await fetchIndicatorHistoricalData(indicator, exchange);
+    renderIndicatorCalendarView(indicator, exchange);
+  } catch (error) {
+    indicatorHistoryOutputDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    console.error(error);
+  }
+});
+
+// Fetch historical data for an indicator regardless of stock
+async function fetchIndicatorHistoricalData(indicator, exchange) {
+  const files = state.indexFiles[exchange];
+  if (!files || files.length === 0) {
+    throw new Error(`No data files found for ${exchange.toUpperCase()}`);
+  }
+  
+  // Create unique key for caching
+  const cacheKey = `${exchange}_all_${indicator}`;
+  
+  // Check if we already have this data cached
+  if (state.indicatorHistoricalData[cacheKey]) {
+    return state.indicatorHistoricalData[cacheKey];
+  }
+  
+  const data = {};
+  
+  // Process each file (date) sequentially
+  for (const filePath of files) {
+    try {
+      const response = await fetch(filePath);
+      if (!response.ok) continue;
+      
+      const fileData = await response.json();
+      
+      // Extract date from filename (IND150525.json → 2025-05-15)
+      const match = filePath.match(/IND(\d{2})(\d{2})(\d{2})\.json/);
+      if (!match) continue;
+      
+      const day = match[1];
+      const month = match[2];
+      const year = `20${match[3]}`;
+      const dateStr = `${year}-${month}-${day}`;
+      
+      // Calculate average indicator value across all stocks
+      const key = exchange === 'nse' ? 'Symbol' : 'ScripId';
+      let stocks = Array.isArray(fileData) ? fileData : [fileData];
+      
+      // Filter out entries with no value for the indicator
+      const stocksWithIndicator = stocks.filter(stock => stock[indicator] !== undefined);
+      
+      if (stocksWithIndicator.length > 0) {
+        // Calculate stats
+        const values = stocksWithIndicator.map(stock => parseFloat(stock[indicator]) || 0);
+        const sum = values.reduce((a, b) => a + b, 0);
+        const avg = (sum / values.length).toFixed(2);
+        const count = values.length;
+        const countWithValue100 = values.filter(val => val === 100).length;
+        
+        data[dateStr] = {
+          avg: avg,
+          count: count,
+          countWithValue100: countWithValue100
+        };
+      }
+    } catch (error) {
+      console.warn(`Error loading data from ${filePath}:`, error);
+      // Continue to next file
+    }
+  }
+  
+  // Cache the results
+  state.indicatorHistoricalData[cacheKey] = data;
+  return data;
+}
+
+// Render calendar view for indicator historical data
+function renderIndicatorCalendarView(indicator, exchange) {
+  const cacheKey = `${exchange}_all_${indicator}`;
+  const data = state.indicatorHistoricalData[cacheKey] || {};
+  
+  if (Object.keys(data).length === 0) {
+    indicatorHistoryOutputDiv.innerHTML = '<div class="alert alert-warning">No historical data found for the selected indicator</div>';
+    return;
+  }
+  
+  // Group dates by month
+  const months = {};
+  for (const dateStr in data) {
+    const date = new Date(dateStr);
+    const monthYear = `${date.getMonth() + 1}-${date.getFullYear()}`;
+    
+    if (!months[monthYear]) {
+      months[monthYear] = [];
+    }
+    
+    months[monthYear].push({
+      date: date,
+      data: data[dateStr]
+    });
+  }
+  
+  // Sort months
+  const sortedMonths = Object.keys(months).sort((a, b) => {
+    const [monthA, yearA] = a.split('-').map(Number);
+    const [monthB, yearB] = b.split('-').map(Number);
+    
+    if (yearA !== yearB) return yearA - yearB;
+    return monthA - monthB;
+  });
+  
+  // Build calendar HTML
+  let html = `
+    <div class="card">
+      <div class="card-header bg-primary text-white">
+        <h4 class="mb-0">Historical Data: ${indicator} (${exchange.toUpperCase()}) - All Stocks</h4>
+      </div>
+      <div class="card-body calendar-wrapper">
+  `;
+  
+  // Add each month
+  sortedMonths.forEach(monthKey => {
+    const [month, year] = monthKey.split('-').map(Number);
+    const monthDate = new Date(year, month - 1, 1);
+    const monthName = monthDate.toLocaleString('default', { month: 'long' });
+    
+    html += `
+      <div class="calendar-month">
+        <h5>${monthName} ${year}</h5>
+        <div class="calendar-grid">
+          <div class="calendar-weekday">Sun</div>
+          <div class="calendar-weekday">Mon</div>
+          <div class="calendar-weekday">Tue</div>
+          <div class="calendar-weekday">Wed</div>
+          <div class="calendar-weekday">Thu</div>
+          <div class="calendar-weekday">Fri</div>
+          <div class="calendar-weekday">Sat</div>
+    `;
+    
+    const firstDay = new Date(year, month - 1, 1).getDay();
+    const lastDate = new Date(year, month, 0).getDate();
+    
+    // Add empty cells for days before first day of month
+    for (let i = 0; i < firstDay; i++) {
+      html += '<div class="calendar-day"></div>';
+    }
+    
+    // Add days of the month
+    for (let day = 1; day <= lastDate; day++) {
+      const date = new Date(year, month - 1, day);
+      const dateStr = date.toISOString().split('T')[0];
+      const weekday = date.getDay();
+      const isWeekend = weekday === 0 || weekday === 6;
+      
+      const dayData = months[monthKey].find(d => 
+        d.date.getDate() === day &&
+        d.date.getMonth() === month - 1 &&
+        d.date.getFullYear() === year
+      );
+      
+      const hasData = !!dayData;
+      let valueClass = '';
+      
+      if (hasData) {
+        const value = Number(dayData.data.avg);
+        if (!isNaN(value)) {
+          if (value >= 80) valueClass = 'value-high';
+          else if (value >= 50) valueClass = 'value-medium';
+          else valueClass = 'value-low';
+        }
+      }
+      
+      html += `
+        <div class="calendar-day ${isWeekend ? 'weekend' : ''} ${hasData ? 'has-data' : ''}" 
+             data-date="${dateStr}">
+          <div class="calendar-date">${day}</div>
+          ${hasData ? `
+            <div class="indicator-value ${valueClass}">
+              Avg: ${dayData.data.avg}${Number(dayData.data.avg) === 100 ? ' (N/A)' : ''}
+            </div>
+            <div class="small">Stocks: ${dayData.data.count}</div>
+            <div class="small">100's: ${dayData.data.countWithValue100}</div>
+          ` : ''}
+        </div>
+      `;
+    }
+    
+    html += `
+        </div>
+      </div>
+    `;
+  });
+  
+  html += `
+      </div>
+    </div>
+  `;
+  
+  indicatorHistoryOutputDiv.innerHTML = html;
+}
 
     // DOM elements
     const exchangeSelect = document.getElementById('exchange');
